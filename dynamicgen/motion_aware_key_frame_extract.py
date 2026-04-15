@@ -75,6 +75,7 @@ class MotionFrameExtractor:
                 # Assume image frames are located in the "rgb" subdirectory
                 # Modify here if your dataset structure is different
                 rgb_folder = scene_folder / "rgb"
+                # rgb_folder = scene_folder / "images"
                 if rgb_folder.exists() and rgb_folder.is_dir():
                     sequence_folders.append(rgb_folder)
         
@@ -108,7 +109,8 @@ class MotionFrameExtractor:
         
         # Loading images
         images = []
-        for img_path in image_files:
+        # for img_path in image_files:
+        for img_path in image_files[:49]:
             img = cv2.imread(img_path)
             if img is not None:
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
