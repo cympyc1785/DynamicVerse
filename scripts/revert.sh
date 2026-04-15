@@ -1,0 +1,1 @@
+python prompt_revert.py /data1/cympyc1785/data/motion_dataset/DynamicVerse/SceneData/DL3DV/scenes/1K
