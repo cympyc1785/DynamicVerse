@@ -783,7 +783,7 @@ Examples:
     
     # Configure Sa2VA model path
     sa2va_model_path = "../preprocess/pretrained/Sa2Va-8B"
-    sa2va_model_path = "/mnt/shared-storage-user/wenkairun/idc2-shared/wenkairun/ckpts/Sa2Va-8B"
+    # sa2va_model_path = "/mnt/shared-storage-user/wenkairun/idc2-shared/wenkairun/ckpts/Sa2Va-8B"
     
     # Check for mutually exclusive mode options
     modes_count = sum([args.images, args.frames])

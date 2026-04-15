@@ -187,19 +187,8 @@ def call_qvq_api_multi_images(frames, prompt, temp_dir="temp"):
         
         print(f"All {len(frames)} keyframes processing completed")
         
-        # Get API key and validate
-        api_key = os.getenv("DASHSCOPE_API_KEY")
-        if not api_key:
-            raise ValueError("DASHSCOPE_API_KEY environment variable not set or empty")
-        
-        print(f"API Key Status: {'✅ Set' if api_key else '❌ Not Set'}")
-        
         # Initialize OpenAI client
         client = OpenAI(
-            # api_key=api_key,
-            # base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
-            # base_url="http://localhost:11434/v1", 
-            # api_key="ollama"
             base_url="http://127.0.0.1:22002/v1",
             api_key="none"
         )
@@ -208,11 +197,7 @@ def call_qvq_api_multi_images(frames, prompt, temp_dir="temp"):
         
         # Create chat completion request
         completion = client.chat.completions.create(
-            # model="qvq-max-latest",
-            # model="qwen2.5vl:72b",
-            # model="Qwen2.5-VL-72B-Instruct",
             model="Qwen/Qwen3-VL-30B-A3B-Instruct",
-            # model="Qwen3-VL-235B-A22B-Instruct",
             messages=[
                 {
                     "role": "user",
@@ -262,69 +247,6 @@ def call_qvq_api_multi_images(frames, prompt, temp_dir="temp"):
         if temp_image_paths:
             print(f"Cleaned {len(temp_image_paths)} temp files")
 
-def parse_json_from_response(response_text):
-    """
-    Extract and parse JSON object from response text
-    
-    Args:
-        response_text: API response text
-    
-    Returns:
-        parsed_json: Parsed JSON object
-    """
-    try:
-        # Try to parse entire response directly
-        return json.loads(response_text)
-    except json.JSONDecodeError:
-        # If failed, look for JSON pattern
-        import re
-        
-        # Find JSON object pattern
-        json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
-        matches = re.finditer(json_pattern, response_text, re.DOTALL)
-        
-        for match in matches:
-            try:
-                result = json.loads(match.group(0))
-                print("✅ Successfully parsed JSON object from response")
-                return result
-            except json.JSONDecodeError:
-                continue
-        
-        # If all failed, return default structure
-        print("⚠️ Failed to parse valid JSON, returning default structure")
-        return {
-            "dynamic": [],
-            "reasoning": {},
-            "raw_response": response_text
-        }
-
-def validate_json_format(data):
-    """
-    Validate if JSON format meets requirements
-    
-    Args:
-        data: Parsed JSON data
-    
-    Returns:
-        is_valid: Boolean indicating validity
-    """
-    if not isinstance(data, dict):
-        return False
-    
-    # Check necessary keys
-    if "dynamic" not in data or "reasoning" not in data:
-        return False
-    
-    # Check data types
-    if not isinstance(data.get("dynamic"), list):
-        return False
-    
-    if not isinstance(data.get("reasoning"), dict):
-        return False
-    
-    return True
-
 def analyze_single_scene(scene_name, scene_path, rgb_dir, max_frames=64, temp_dir="temp_qvq"):
     """
     Analyze rgb folder of a single scene
@@ -351,101 +273,9 @@ def analyze_single_scene(scene_name, scene_path, rgb_dir, max_frames=64, temp_di
         # 2. Call QVQ API
         print("🔄 Calling QVQ API...")
         
-        prompt = """TASK: Identify objects with NOTICEABLE movement from this sequence of video frames. These frames were SAMPLED from a video based on HIGH MOTION content. Your job is to find and identify objects that show REASONABLY DETECTABLE positional changes between frames.
+        with open("prompt_2.txt", "r") as f:
+            prompt = f.read()
 
-CONTEXT: 
-- These are HIGH-MOTION video frames sampled from a video sequence
-- The frames are presented in chronological order showing moments of significant movement
-- Each frame captures a moment when objects are actively moving or changing
-- You need to identify what objects are moving by comparing their positions across frames
-- The frames maintain original resolution to preserve movement details
-
-ANALYSIS APPROACH:
-- Compare object positions across the frame sequence to detect NOTICEABLE movement
-- Look for objects that show REASONABLE changes in position, orientation, or size between frames
-- Include objects that are displaced, rotated, flying, falling, or transforming with detectable motion
-- Track objects with recognizable motion: moving characters, flying projectiles, falling debris, shifting elements
-- Focus on motion patterns that are reasonably observable across frames
-- IMPORTANT: Many dynamic objects in videos are living creatures (humans, animals, characters)
-- CONSIDER CARRIED/MANIPULATED OBJECTS: If static objects move, they may be carried, held, or manipulated by living creatures
-- Include objects that move because they are being carried, thrown, pushed, or manipulated by creatures
-- If only part of an object moves detectably, identify the entire object as the moving entity
-- If multiple instances of the same object type are present and moving, identify and describe each one separately
-- IGNORE only the most subtle movements - identify objects with reasonably noticeable motion
-- MANDATORY: You MUST identify at least one moving object - examine carefully to find movement
-
-WHAT TO IDENTIFY (with reasonably detectable movement):
-- Living creatures with noticeable movement (humans, animals, characters running, jumping, walking, shifting position)
-- Flying or thrown objects with detectable trajectories (projectiles, debris, magical effects)
-- Floating elements with recognizable motion paths (particles, smoke, magical energy, flowing elements)
-- Objects with detectable rotation or transformation
-- Objects with reasonable displacement caused by forces or collisions
-- CARRIED/MANIPULATED OBJECTS: Items being carried, held, thrown, or pushed by creatures (weapons, tools, bags, clothing)
-- Objects that move due to creature interaction (doors being opened, items being picked up, objects being manipulated)
-- Any element that shows noticeable position changes between frames
-- Moving vehicles, animals, or other dynamic elements with detectable motion
-
-STRICT REQUIREMENTS:
-1. Your response MUST be a valid JSON object with exactly two keys: "dynamic" and "reasoning"
-2. "dynamic" MUST be a list of strings, each describing one moving object
-3. "reasoning" MUST be a dictionary where each key matches an item from the "dynamic" list
-4. Each dynamic object MUST be described using the format "[adjective] + [noun]" (e.g., "tall person", "white car", "small bird", "blue dragon")
-5. MANDATORY: Every object description MUST include at least one descriptive adjective
-6. When multiple instances of the same object type exist, you MUST identify each one separately with different adjectives (e.g., "tall person" and "short person", "red car" and "blue car")
-7. Use descriptive adjectives such as: color (red, blue, white), size (large, small, tall, short), appearance (young, old, thin, fat), clothing (uniformed, casual), or other distinguishing features
-8. If only part of an object moves detectably, identify the entire object (e.g., "uniformed person", "moving car")
-9. MANDATORY: You MUST identify at least one moving object - empty lists are NOT allowed
-10. Identify objects with reasonably noticeable movement - include objects with detectable motion patterns
-11. NO additional text, explanations, or content is allowed outside the JSON structure
-
-REASONING REQUIREMENTS:
-- The "reasoning" field should provide brief, essential descriptions (one short sentence) for each dynamic object
-- Focus only on the most distinctive visual features: color, clothing, key accessories, or held objects
-- CRITICAL: Always mention any weapons, tools, or objects being carried/held
-- Use minimal but precise language - avoid unnecessary details
-- Format: "[key appearance features] + [held/carried objects if any]"
-
-MANDATORY JSON FORMAT:
-{
-"dynamic": [
-    "adjective_object1",
-    "adjective_object2"
-],
-"reasoning": {
-    "adjective_object1": "brief description of key appearance + held objects",
-    "adjective_object2": "brief description of key appearance + held objects"
-}
-}
-
-EXAMPLE - your response should look EXACTLY like this (but with your analysis):
-{
-"dynamic": [
-    "large dragon",
-    "glowing particle",
-    "moving character",
-    "carried sword",
-    "flowing water"
-],
-"reasoning": {
-    "large dragon": "Green-scaled dragon with spread wings and red eyes.",
-    "glowing particle": "Blue-white magical orb with sparkly trails.",
-    "moving character": "Human in dark armor and red cape with brown hair.",
-    "carried sword": "Silver blade with golden hilt held by character.",
-    "flowing water": "Blue water stream with white foam."
-}
-}
-
-CRITICAL: 
-- Start your response immediately with '{' and end with '}'
-- No other characters or text are permitted
-- Include objects with reasonably noticeable, detectable movement
-- Remember: Many moving objects are living creatures, and static objects may move due to creature interaction
-- IDENTIFY BOTH: autonomous moving objects AND objects moved by creatures (carried, thrown, manipulated)
-- Every object MUST have a descriptive adjective before the noun
-- If multiple similar objects exist and are moving, describe each one separately with different adjectives
-- MANDATORY: You MUST identify at least one moving object - examine carefully and find movement
-- Empty lists are NOT allowed - always find at least one object with detectable motion
-- REASONING MUST provide brief, essential descriptions focusing on key appearance and held objects"""
         max_retries = 3
         result = None
         
@@ -454,21 +284,9 @@ CRITICAL:
             
             try:
                 response = call_qvq_api_multi_images(frames, prompt, temp_dir)
-                
-                # Parse response
-                result = parse_json_from_response(response)
-                
-                # Validate format
-                if validate_json_format(result):
-                    print("✅ JSON format validation passed!")
+
+                if response is not None:
                     break
-                else:
-                    print("❌ JSON format validation failed")
-                    if retry < max_retries - 1:
-                        print("🔄 Preparing to retry...")
-                        continue
-                    else:
-                        print("⚠️ Max retries reached, saving current result")
                         
             except Exception as e:
                 print(f"❌ API call failed: {e}")
@@ -481,33 +299,28 @@ CRITICAL:
         
         # 3. Saving results
         print("🔄 Saving analysis results...")
+
+        result = {
+            "prompt": response
+        }
         
         # Add metadata
         result["metadata"] = {
             "scene_name": scene_name,
-            "rgb_dir": rgb_dir,
+            "input_dir": rgb_dir,
             "total_frames_used": len(frames),
-            "analysis_method": "multi_image_sequence",
-            "original_resolution_preserved": True,
-            "frame_info": frame_info,
             "analysis_time": datetime.now().isoformat(),
             "inference_time": time.time() - start_time         
         }
         
         # Save JSON
-        result_filename = f"{scene_name}_qvq_analysis.json"
+        result_filename = f"prompt.json"
         result_path = os.path.join(scene_path, result_filename)
         
         with open(result_path, 'w', encoding='utf-8') as f:
             json.dump(result, f, ensure_ascii=False, indent=2)
         end_time = time.time()
         print(f"✅ Analysis Completed: {result_path}")
-        print(f"🎯 Identified dynamic objects count: {len(result.get('dynamic', []))}")
-        print(f"⏱️ Analysis duration: {end_time - start_time:.2f} seconds, frame count: {len(frames)}")
-        if result.get('dynamic'):
-            print(f"📋 Dynamic object list:")
-            for i, obj in enumerate(result['dynamic'], 1):
-                print(f"   {i}. {obj}")
         
         return True, result_path
         
@@ -523,8 +336,6 @@ def main():
                         help="Keyframes directory path")
     parser.add_argument("--key_frame_dir", required=True, 
                         help="Keyframes directory path")
-    parser.add_argument("--output_json", required=True,
-                        help="Output JSON file path")
     parser.add_argument("--max_frames", type=int, default=64,
                         help="Max frames to use (default: 64)")
     parser.add_argument("--temp_dir", default="temp_qvq",
@@ -536,7 +347,6 @@ def main():
     print("🎯 Keyframe-based QVQ-max Multi-Image Dynamic Object Analysis")
     print("=" * 60)
     print(f"📁 Keyframe Directory: {args.key_frame_dir}")
-    print(f"📄 Output JSON: {args.output_json}")
     print(f"🖼️ Max Frames: {args.max_frames}")
     print(f"🔍 Analysis Method: Multi-image sequence (preserving original resolution)")
     print("=" * 60)
@@ -546,26 +356,17 @@ def main():
         if not os.path.exists(args.key_frame_dir):
             raise ValueError(f"Keyframes directory does not exist: {args.key_frame_dir}")
         
-        # 2. Ensure output directory exists
-        output_dir = os.path.dirname(args.output_json)
-        if output_dir:
-            os.makedirs(output_dir, exist_ok=True)
-        
-        # 3. Analyze scene
+        # 2. Analyze scene
         scene_path = os.path.dirname(os.path.normpath(args.frames_path))
         scene_name = os.path.basename(os.path.normpath(scene_path))
+
+        print(scene_path)
+        print(scene_name)
         key_frame_path = os.path.join(args.key_frame_dir, scene_name, "rgb")
         success, result_path = analyze_single_scene(
             scene_name, scene_path, key_frame_path,
             max_frames=args.max_frames, temp_dir=args.temp_dir
         )
-
-        # 4. Move result to specified output path
-        if success and result_path:
-            os.rename(result_path, args.output_json)
-            print(f"✅ Result saved to: {args.output_json}")
-        else:
-            print("❌ Analysis not successful, result file not generated") 
 
     except Exception as e:
         print(f"❌ Processing failed: {e}")
