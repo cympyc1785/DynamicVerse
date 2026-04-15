@@ -1,0 +1,95 @@
+TASK: Identify objects with NOTICEABLE movement from this sequence of video frames. These frames were SAMPLED from a video based on HIGH MOTION content. Your job is to find and identify objects that show REASONABLY DETECTABLE positional changes between frames.
+
+CONTEXT: 
+- These are HIGH-MOTION video frames sampled from a video sequence
+- The frames are presented in chronological order showing moments of significant movement
+- Each frame captures a moment when objects are actively moving or changing
+- You need to identify what objects are moving by comparing their positions across frames
+- The frames maintain original resolution to preserve movement details
+
+ANALYSIS APPROACH:
+- Compare object positions across the frame sequence to detect NOTICEABLE movement
+- Look for objects that show REASONABLE changes in position, orientation, or size between frames
+- Include objects that are displaced, rotated, flying, falling, or transforming with detectable motion
+- Track objects with recognizable motion: moving characters, flying projectiles, falling debris, shifting elements
+- Focus on motion patterns that are reasonably observable across frames
+- IMPORTANT: Many dynamic objects in videos are living creatures (humans, animals, characters)
+- CONSIDER CARRIED/MANIPULATED OBJECTS: If static objects move, they may be carried, held, or manipulated by living creatures
+- Include objects that move because they are being carried, thrown, pushed, or manipulated by creatures
+- If only part of an object moves detectably, identify the entire object as the moving entity
+- If multiple instances of the same object type are present and moving, identify and describe each one separately
+- IGNORE only the most subtle movements - identify objects with reasonably noticeable motion
+- MANDATORY: You MUST identify at least one moving object - examine carefully to find movement
+
+WHAT TO IDENTIFY (with reasonably detectable movement):
+- Living creatures with noticeable movement (humans, animals, characters running, jumping, walking, shifting position)
+- Flying or thrown objects with detectable trajectories (projectiles, debris, magical effects)
+- Floating elements with recognizable motion paths (particles, smoke, magical energy, flowing elements)
+- Objects with detectable rotation or transformation
+- Objects with reasonable displacement caused by forces or collisions
+- CARRIED/MANIPULATED OBJECTS: Items being carried, held, thrown, or pushed by creatures (weapons, tools, bags, clothing)
+- Objects that move due to creature interaction (doors being opened, items being picked up, objects being manipulated)
+- Any element that shows noticeable position changes between frames
+- Moving vehicles, animals, or other dynamic elements with detectable motion
+
+STRICT REQUIREMENTS:
+1. Your response MUST be a valid JSON object with exactly two keys: "dynamic" and "reasoning"
+2. "dynamic" MUST be a list of strings, each describing one moving object
+3. "reasoning" MUST be a dictionary where each key matches an item from the "dynamic" list
+4. Each dynamic object MUST be described using the format "[adjective] + [noun]" (e.g., "tall person", "white car", "small bird", "blue dragon")
+5. MANDATORY: Every object description MUST include at least one descriptive adjective
+6. When multiple instances of the same object type exist, you MUST identify each one separately with different adjectives (e.g., "tall person" and "short person", "red car" and "blue car")
+7. Use descriptive adjectives such as: color (red, blue, white), size (large, small, tall, short), appearance (young, old, thin, fat), clothing (uniformed, casual), or other distinguishing features
+8. If only part of an object moves detectably, identify the entire object (e.g., "uniformed person", "moving car")
+9. MANDATORY: You MUST identify at least one moving object - empty lists are NOT allowed
+10. Identify objects with reasonably noticeable movement - include objects with detectable motion patterns
+11. NO additional text, explanations, or content is allowed outside the JSON structure
+
+REASONING REQUIREMENTS:
+- The "reasoning" field should provide brief, essential descriptions (one short sentence) for each dynamic object
+- Focus only on the most distinctive visual features: color, clothing, key accessories, or held objects
+- CRITICAL: Always mention any weapons, tools, or objects being carried/held
+- Use minimal but precise language - avoid unnecessary details
+- Format: "[key appearance features] + [held/carried objects if any]"
+
+MANDATORY JSON FORMAT:
+{
+"dynamic": [
+    "adjective_object1",
+    "adjective_object2"
+],
+"reasoning": {
+    "adjective_object1": "brief description of key appearance + held objects",
+    "adjective_object2": "brief description of key appearance + held objects"
+}
+}
+
+EXAMPLE - your response should look EXACTLY like this (but with your analysis):
+{
+"dynamic": [
+    "large dragon",
+    "glowing particle",
+    "moving character",
+    "carried sword",
+    "flowing water"
+],
+"reasoning": {
+    "large dragon": "Green-scaled dragon with spread wings and red eyes.",
+    "glowing particle": "Blue-white magical orb with sparkly trails.",
+    "moving character": "Human in dark armor and red cape with brown hair.",
+    "carried sword": "Silver blade with golden hilt held by character.",
+    "flowing water": "Blue water stream with white foam."
+}
+}
+
+CRITICAL: 
+- Start your response immediately with '{' and end with '}'
+- No other characters or text are permitted
+- Include objects with reasonably noticeable, detectable movement
+- Remember: Many moving objects are living creatures, and static objects may move due to creature interaction
+- IDENTIFY BOTH: autonomous moving objects AND objects moved by creatures (carried, thrown, manipulated)
+- Every object MUST have a descriptive adjective before the noun
+- If multiple similar objects exist and are moving, describe each one separately with different adjectives
+- MANDATORY: You MUST identify at least one moving object - examine carefully and find movement
+- Empty lists are NOT allowed - always find at least one object with detectable motion
+- REASONING MUST provide brief, essential descriptions focusing on key appearance and held objects

@@ -1,0 +1,40 @@
+You are an expert scene understanding and cinematography analysis model.
+
+Task:
+Given a video caption that contains camera motion information and possibly scene/environment information, separate the caption into two parts:
+1. Scene-related description
+2. Camera-related description
+
+Rules:
+- Do NOT add new information.
+- Do NOT paraphrase.
+- Extract only phrases that explicitly appear in the caption.
+- Scene = physical environment, location, landscape, architecture, surroundings.
+- Camera = movement, direction, panning, tilting, zooming, motion behavior, cinematography-related actions.
+- If NO scene-related information is present in the caption, output Scene: no scene
+- Keep the extracted text concise.
+
+Output strictly in the following format:
+**Scene**: [scene-related text OR "no scene"]
+**Camera**: [camera-related text]
+
+Example 1:
+
+Caption:
+"The camera moves forward along a covered walkway, panning left to reveal a river and distant scenery, then continues forward and pans right, capturing the architectural details and surrounding landscape."
+
+Answer:
+**Scene**: The scene includes a covered walkway, a river, distant scenery, architectural details, and the surrounding landscape.
+**Camera**: The camera moves forward, panning left, continues forward, pans right
+
+Example 2:
+
+Caption:
+"The camera slowly pans to the left and then tilts upward."
+
+Answer:
+**Scene**: no scene
+**Camera**: The camera slowly pans to the left, tilts upward
+
+
+Caption:

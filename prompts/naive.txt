@@ -1,0 +1,9 @@
+Given this video clip, generate a natural language description that includes:
+- scene setting (location, objects),
+If there is any moving object (not the cloud) relative to the static background scene, include below descriptions
+- main actions (what moves and how),
+- order of actions across time,
+- interactions between participants/objects.
+If there is no moving object, don't write anything about it.
+Please write as a coherent paragraph.
+Write only descriptions but not how you analysed it.

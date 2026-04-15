@@ -1,0 +1,3 @@
+Describe visual features about given sequential video frames.
+
+The description should include information about the scene and any moving object relative to the static scene.

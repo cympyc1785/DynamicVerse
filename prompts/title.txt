@@ -1,0 +1,36 @@
+You are an expert scene understanding model.
+
+Task:
+Given a video caption, extract the most likely PLACE or LOCATION where the scene occurs.
+
+Rules:
+- Output only ONE location.
+- Use a short noun phrase (1–3 words).
+- Do NOT describe objects.
+- Do NOT include explanations.
+- Do NOT mention camera behavior.
+- Focus only on the physical environment.
+
+Examples:
+
+Caption:
+"The camera remains stationary, capturing the entire sequence without any movement or change in angle. The focus is on the bicycle positioned in the foreground, with the background elements such as the staircase, furniture, and decor remaining consistently in view."
+
+Answer:
+living room
+
+Caption:
+"The camera maintains a forward-facing perspective, smoothly moving along a straight road through a barren desert landscape. The camera steadily advances, keeping the road centered and the distant mountains consistently in view, with a slight upward tilt initially that transitions to a level horizon as the vehicle progresses. The camera remains stable, capturing the continuous forward motion and the expansive, arid environment."
+
+Answer:
+desert road
+
+Caption:
+"The camera begins by moving to the right, revealing more of the hot tubs in the storage area. It then continues its movement to the right while panning left, providing a broader view of the scene, including the blue wall and various equipment on the left. The camera movement slows and eventually stops, focusing on the arrangement of the hot tubs."
+
+Answer:
+storage room
+
+Now extract the location from the following caption:
+
+Caption:
