@@ -1,2 +1,14 @@
 preprocess/pretrained/
 .github/prompts
+
+*.pyc
+**/__pycache__/
+
+data/DynamicVerseData
+data/backup
+data/sintel
+results
+tmp
+temp_qvq
+dynamicgen/test
+logs
