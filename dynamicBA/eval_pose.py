@@ -25,14 +25,14 @@ from scipy.spatial.transform import Rotation as R
 
 def get_preds(video_path, model, experiment_name, number_of_frames):
     """Get camera pose predictions in camera2world format"""
-    images_path = os.path.join(video_path, model, experiment_name)
+    images_path = os.path.join(video_path, model, "base")
 
     if not os.path.exists(images_path):
         print(f"Path {images_path} does not exist")
         return None, None, None         
     
     R_preds = []
-    t_preds = [] 
+    t_preds = []
 
     for i in range(number_of_frames):
         # npz = np.load(os.path.join(images_path, f'{i:04d}.npz'), allow_pickle=True)
@@ -41,6 +41,33 @@ def get_preds(video_path, model, experiment_name, number_of_frames):
         npz = np.load(os.path.join(images_path, f'{i:04d}_simple_flow_opt_1.0_1e-4.npz'), allow_pickle=True)
         R_preds.append(Rot.from_matrix(npz['R']).as_quat(scalar_first=True)) # convert to quatenion
         t_preds.append(npz['t'])
+    
+    R_preds, t_preds = np.stack(R_preds, axis=0), np.stack(t_preds, axis=0)
+
+    return R_preds, t_preds
+
+def get_da3_preds(video_path, model, number_of_frames):
+    camera_path = os.path.join(video_path, model, "camera_params.npz")
+
+    camera_data = np.load(camera_path, allow_pickle=True)
+
+    extrinsics = camera_data["extrinsics"]
+    intrinsics = camera_data["intrinsics"]
+
+    R_preds = []
+    t_preds = []
+
+    frame_num = min(number_of_frames, len(extrinsics))
+
+    for i in range(frame_num):
+        R_w2c = extrinsics[i, :3, :3]
+        t_w2c = extrinsics[i, :3, 3:4]
+
+        R_c2w = R_w2c.T
+        t_c2w = (-R_c2w @ t_w2c).squeeze(1)
+
+        R_preds.append(Rot.from_matrix(R_c2w).as_quat(scalar_first=True))
+        t_preds.append(t_c2w)
     
     R_preds, t_preds = np.stack(R_preds, axis=0), np.stack(t_preds, axis=0)
 
@@ -128,12 +155,12 @@ def eval_pose(dataset="sintel", base_path=None, experiment_name="base",
     else:
         save_name = "unnormalized"
     
-    if "sintel" in dataset:
-        videos = ["alley_2", "ambush_4", "ambush_5", "ambush_6", "cave_2", "cave_4", 
-                 "market_2", "market_5", "market_6", "shaman_3", "sleeping_1", 
-                 "sleeping_2", "temple_2", "temple_3"]
-    else:
-        videos = sorted(os.listdir(base_path))
+    # if "sintel" in dataset:
+    #     videos = ["alley_2", "ambush_4", "ambush_5", "ambush_6", "cave_2", "cave_4", 
+    #              "market_2", "market_5", "market_6", "shaman_3", "sleeping_1", 
+    #              "sleeping_2", "temple_2", "temple_3"]
+    # else:
+    videos = sorted(os.listdir(base_path))
     
     res_save_path = f"results/pose/{dataset}/{experiment_name}_{save_name}"
     print(res_save_path)
@@ -158,7 +185,15 @@ def eval_pose(dataset="sintel", base_path=None, experiment_name="base",
         print(f"Working on {i}:{video}", flush=True)
     
         R_gt, t_gt, number_of_frames = get_gt(video_path)
-        preds = get_preds(video_path, model, experiment_name, number_of_frames)
+        if model == "dynamicBA":
+            preds = get_preds(video_path, model, experiment_name, number_of_frames)
+        else:
+            preds = get_da3_preds(video_path, model, number_of_frames)
+
+        min_len = min(len(preds[0]), len(R_gt))
+
+        R_gt = R_gt[:min_len]
+        t_gt = t_gt[:min_len]
 
         ATE, RPEt, RPEr = evaluate_pose(preds, R_gt, t_gt, normalize, video, res_save_path)
 
