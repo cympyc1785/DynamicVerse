@@ -46,7 +46,7 @@ def load_keyframe_paths(keyframes_dir):
 
     return image_paths
 
-def load_keyframes(image_paths, max_frames=64):
+def load_keyframes(image_paths, frame_interval=1, max_frames=64):
     if len(image_paths) > max_frames:
         image_paths = image_paths[:max_frames]
     
@@ -54,7 +54,8 @@ def load_keyframes(image_paths, max_frames=64):
     frames = []
     frame_info = []
     
-    for i, image_path in enumerate(image_paths):
+    for i in range(0, len(image_paths), frame_interval):
+        image_path = image_paths[i]
         try:
             # Load image
             img = Image.open(image_path)
@@ -351,7 +352,7 @@ def call_qvq_api_multi_images(model_name, frames, prompt, temp_dir="temp", verbo
         # Initialize OpenAI client
         client = OpenAI(
             # base_url="http://127.0.0.1:22032/v1",
-            base_url="http://127.0.0.1:22005/v1",
+            base_url="http://127.0.0.1:22002/v1",
             # base_url="http://127.0.0.1:22005/v1",
             api_key="none"
         )
@@ -373,7 +374,8 @@ def call_qvq_api_multi_images(model_name, frames, prompt, temp_dir="temp", verbo
         
         answer_content = get_answer_from_completion(completion)
 
-        print(answer_content)
+        if verbose:
+            print(answer_content)
 
         return answer_content
         
@@ -544,10 +546,12 @@ def find_continuous_segments(nums: list, segment_len=49, use_remaining_frames=Fa
 
     return segments_num, segments_idx
 
-def get_title_from_caption(scene_name, scene_dir, split, use_only_first_caption=True, verbose=False):
-    ERR_LIST_PATH = "error_list.txt"
-    result_filename = f"prompts.json"
-    result_path = os.path.join(scene_dir, result_filename)
+def get_title_from_caption(job, use_only_first_caption=True, verbose=False):
+    scene_name, scene_dir, split, export_dir = job
+    ERR_LIST_PATH = os.path.join(export_dir, "logs", "error_list.txt")
+    result_path = os.path.join(export_dir, split, scene_name, "prompts.json")
+    os.makedirs(os.path.dirname(ERR_LIST_PATH), exist_ok=True)
+    os.makedirs(os.path.dirname(result_path), exist_ok=True)
     if not os.path.exists(result_path):
         print(f"no caption")
         with open(ERR_LIST_PATH, "a+") as f:
@@ -609,10 +613,12 @@ def get_title_from_caption(scene_name, scene_dir, split, use_only_first_caption=
             with open(ERR_LIST_PATH, "a+") as f:
                 f.write(f"{split}/{scene_name}/{seg_idx_str} {e}\n")
 
-def separate_scene_text_from_caption(scene_name, scene_dir, split, verbose=False):
-    ERR_LIST_PATH = "error_list.txt"
-    result_filename = f"prompts.json"
-    result_path = os.path.join(scene_dir, result_filename)
+def separate_scene_text_from_caption(job, verbose=False):
+    scene_name, scene_dir, split, export_dir = job
+    ERR_LIST_PATH = os.path.join(export_dir, "logs", "error_list.txt")
+    result_path = os.path.join(export_dir, split, scene_name, "prompts.json")
+    os.makedirs(os.path.dirname(ERR_LIST_PATH), exist_ok=True)
+    os.makedirs(os.path.dirname(result_path), exist_ok=True)
     if not os.path.exists(result_path):
         print(f"no caption")
         with open(ERR_LIST_PATH, "a+") as f:
@@ -674,19 +680,20 @@ def separate_scene_text_from_caption(scene_name, scene_dir, split, verbose=False
             with open(ERR_LIST_PATH, "a+") as f:
                 f.write(f"{split}/{scene_name}/{seg_idx_str} {e}\n")
 
-def analyze_single_scene(scene_name, scene_dir, split, temp_dir="temp_qvq", inference_type="all",
+def analyze_single_scene(job, segment_length=49, frame_interval=1, temp_dir="temp_qvq", inference_type="all",
                          skip_exist=False, verbose=False, model_handler=None):
     """
     Analyze keyframe folder of a single scene
 
-    inference_type : "camera", "scene", "dynamic" or "all"
+    inference_type : "camera", "scene", "dynamic"
     skip_exist : skip if result exist
     """
-    VID_SEG_LEN = 49
-    LAST_SEG_MIN_FRAME = 2
-    ERR_LIST_PATH = "error_list.txt"
-    result_filename = f"prompts.json"
-    result_path = os.path.join(scene_dir, result_filename)
+    scene_name, scene_dir, split, export_dir, camera_prompt_dir = job
+    ERR_LIST_PATH = os.path.join(export_dir, "logs", "error_list.txt")
+    result_path = os.path.join(export_dir, split, scene_name, "prompts.json")
+    camera_prompt_path = os.path.join(camera_prompt_dir, "prompts.json")
+    os.makedirs(os.path.dirname(ERR_LIST_PATH), exist_ok=True)
+    os.makedirs(os.path.dirname(result_path), exist_ok=True)
     # if inference_type == "camera_with_scene_video_inpainted":
     #     images_dir = os.path.join(scene_dir, "da3/inpainted/input_images")
     # else:
@@ -712,14 +719,18 @@ def analyze_single_scene(scene_name, scene_dir, split, temp_dir="temp_qvq", infe
     
     image_paths = load_keyframe_paths(images_dir)
 
-    with open(f"{scene_dir}/prompts.json") as f:
-        all_captions = json.load(f)
+    all_captions = None
+    if os.path.exists(camera_prompt_path):
+        with open(camera_prompt_path) as f:
+            all_captions = json.load(f)
 
     # Find continuous image sequence and Add task (이미지 기준 연속된 sequence 찾아서 task 추가)
     image_filenames = sorted(os.listdir(images_dir))
-    img_num_list = [int(img_filename.split('_')[1].split('.')[0]) for img_filename in image_filenames]
-    # img_num_list = [int(img_filename.split('.')[0]) for img_filename in image_filenames]
-    _, segments_idx = find_continuous_segments(img_num_list, use_remaining_frames=True)
+    if image_filenames[0].startswith("frame"):
+        img_num_list = [int(img_filename.split('_')[1].split('.')[0]) for img_filename in image_filenames]
+    else:
+        img_num_list = [int(img_filename.split('.')[0]) for img_filename in image_filenames]
+    _, segments_idx = find_continuous_segments(img_num_list, segment_len=segment_length, use_remaining_frames=True)
 
     # Add subtasks
     tasks = []
@@ -733,63 +744,40 @@ def analyze_single_scene(scene_name, scene_dir, split, temp_dir="temp_qvq", infe
     # Execute
     for split, scene_name, seg_idx, seg_start_idx, seg_end_idx in tasks:
         seg_idx_str = str(seg_idx)
-
-        if seg_idx_str in all_captions.keys():
-            cap_start_idx, cap_end_idx = all_captions[seg_idx_str]["frame_idx"]
-            if cap_start_idx != seg_start_idx or cap_end_idx != seg_end_idx:
-                print("segment index error")
-                with open(ERR_LIST_PATH, "a+") as f:
-                    f.write(f"{split}/{scene_name}/{seg_idx_str} index mismatch seg:{seg_start_idx}:{seg_end_idx} cap:{cap_start_idx}:{cap_end_idx}\n")
-                continue
     
         try:
-            # if inference_type not in ["scene", "dynamic", "camera_with_scene_video"]:
             if verbose:
                 print("🔄 Loading keyframes...")
-            frames, frame_info = load_keyframes(image_paths[seg_start_idx:seg_end_idx])
+            frames, frame_info = load_keyframes(image_paths[seg_start_idx:seg_end_idx], frame_interval=frame_interval)
             
             # Model, input specification
             result = {}
             input_type = "images"
+            input_data = frames
+            # input_type = "video"
+            # input_data = f"{scene_dir}/49frame_vids/vid_49frame_{seg_start_idx:04d}_{seg_end_idx:04d}.mp4"
+
+            model_name = "Qwen/Qwen3-VL-30B-A3B-Instruct"
             if inference_type == "camera_without_tag":
-                # without tag caption
-                model_name = "Qwen/Qwen3-VL-30B-A3B-Instruct"
                 # model_name = "Qwen/qwen2.5-vl-72b-cam-motion"
                 # model_name = "Qwen/qwen2.5-vl-7b-cam-motion"
-                # input_type = "video"
-                input_data = frames
-            elif inference_type == "scene":
-                model_name = "Qwen/Qwen3-VL-30B-A3B-Instruct"
-                input_data = frames
-                # input_data = f"{scene_dir}/49frame_vids/vid_49frame_{seg_start_idx:04d}_{seg_end_idx:04d}.mp4"
-                # input_type = "video_path"
-            elif inference_type == "dynamic":
-                model_name = "Qwen/Qwen3-VL-30B-A3B-Instruct"
-                input_data = frames
-                # input_data = f"{scene_dir}/49frame_vids/vid_49frame_{seg_start_idx:04d}_{seg_end_idx:04d}.mp4"
-                # input_type = "video_path"
-            elif inference_type == "all":
-                model_name = "Qwen/Qwen3-VL-30B-A3B-Instruct"
-                # input_data = frames
-            elif inference_type == "camera_with_scene_video":
-                model_name = "Qwen/Qwen3-VL-30B-A3B-Instruct"
-                # input_data = f"{scene_dir}/49frame_vids/vid_49frame_{seg_start_idx:04d}_{seg_end_idx:04d}.mp4"
-                # input_type = "video_path"
-                input_data = frames
-            elif inference_type == "camera_with_scene_video_inpainted":
-                model_name = "Qwen/Qwen3-VL-30B-A3B-Instruct"
-                input_data = frames
+                pass
+            elif inference_type in ["scene", "dynamic", "camera_with_scene_video","camera_with_scene_video_inpainted"]:
+                pass
             else:
                 raise ValueError(f"Invalid inference type: {inference_type}")
             
             # Prompt
-            if inference_type == "camera_with_scene_video":
-                with open("prompts/relationship+video.json", "r") as f:
-                    prompt_dict = json.load(f)
-                camera_caption = all_captions[seg_idx_str]["prompt_camera"]
-                prompt = prompt_dict['context'] + prompt_dict['instruction'] + prompt_dict['constraint'] + prompt_dict['format']
-                prompt += "\n\nMovement: " + camera_caption
-            elif inference_type == "camera_with_scene_video_inpainted":
+            if inference_type in ["camera_with_scene_video", "camera_with_scene_video_inpainted"]:
+                if all_captions is None:
+                    raise RuntimeError("No camera caption found", camera_prompt_path)
+                if seg_idx_str in all_captions.keys():
+                    cap_start_idx, cap_end_idx = all_captions[seg_idx_str]["frame_idx"]
+                    if cap_start_idx != seg_start_idx or cap_end_idx != seg_end_idx:
+                        print("segment index error. skipping segment.")
+                        with open(ERR_LIST_PATH, "a+") as f:
+                            f.write(f"{split}/{scene_name}/{seg_idx_str} index mismatch seg:{seg_start_idx}:{seg_end_idx} cap:{cap_start_idx}:{cap_end_idx}\n")
+                        continue
                 with open("prompts/relationship+video.json", "r") as f:
                     prompt_dict = json.load(f)
                 camera_caption = all_captions[seg_idx_str]["prompt_camera"]
@@ -848,10 +836,13 @@ def analyze_single_scene(scene_name, scene_dir, split, temp_dir="temp_qvq", infe
     if os.path.exists(temp_dir):
         shutil.rmtree(temp_dir)
 
-def analyze_single_seg(scene_name, scene_dir, split, temp_dir="temp_qvq", inference_type="all", skip_exist=False, verbose=False, model_handler=None):
-    ERR_LIST_PATH = "error_list.txt"
-    result_filename = f"prompts.json"
-    result_path = os.path.join(scene_dir, result_filename)
+def analyze_single_seg(job, temp_dir="temp_qvq", inference_type="all", skip_exist=False, verbose=False, model_handler=None):
+    scene_name, scene_dir, split, export_dir = job
+    ERR_LIST_PATH = os.path.join(export_dir, "logs", "error_list.txt")
+    result_path = os.path.join(export_dir, split, scene_name, "prompts.json")
+    camera_prompt_path = os.path.join(camera_prompt_dir, "prompts.json")
+    os.makedirs(os.path.dirname(ERR_LIST_PATH), exist_ok=True)
+    os.makedirs(os.path.dirname(result_path), exist_ok=True)
     images_dir = os.path.join(scene_dir, "images")
     if not os.path.exists(images_dir):
         images_dir = os.path.join(scene_dir, "rgb")
@@ -949,40 +940,58 @@ def analyze_single_seg(scene_name, scene_dir, split, temp_dir="temp_qvq", infere
     if os.path.exists(temp_dir):
         shutil.rmtree(temp_dir)
 
-def _worker(task, root_dir, temp_dir, task_type, model_handler=None, verbose=False):
+def _worker(task, **worker_kwargs):
     split, scene_name = task
+
+    root_dir = worker_kwargs["root_dir"]
+    export_dir = worker_kwargs["export_dir"]
+    temp_dir = worker_kwargs["temp_dir"]
+    seg_len = worker_kwargs["seg_len"]
+    frame_interval = worker_kwargs["frame_interval"]
+    task_type = worker_kwargs["task_type"]
+    camera_prompt_root_dir = worker_kwargs.get("camera_prompt_root_dir")
+    model_handler = worker_kwargs.get("model_handler")
+    verbose = worker_kwargs.get("verbose", False)
+
+
     scene_dir = os.path.join(root_dir, split, scene_name)
+    camera_prompt_dir = os.path.join(camera_prompt_root_dir, split, scene_name)
 
     if task_type == "title":
+        job = (scene_name, scene_dir, split, export_dir)
         get_title_from_caption(
-            scene_name, scene_dir, split, verbose=verbose
+            job, verbose=verbose
         )
     elif task_type == "separate_scene_text":
+        job = (scene_name, scene_dir, split, export_dir)
         separate_scene_text_from_caption(
-            scene_name, scene_dir, split, verbose=verbose
+            job, verbose=verbose
         )
     else:
+        job = (scene_name, scene_dir, split, export_dir, camera_prompt_dir)
         analyze_single_scene(
-            scene_name, scene_dir, split,
+            job,
+            segment_length=seg_len,
+            frame_interval=frame_interval,
             temp_dir=temp_dir,
             inference_type=task_type,
             model_handler=model_handler,
             verbose=verbose,
         )
 
-def ensure_worker(task, root_dir, temp_dir, task_type, model_handler=None, verbose=False):
+def ensure_worker(task, **worker_kwargs):
     split, scene_name = task
     try:
-        _worker(task, root_dir, temp_dir, task_type, model_handler=model_handler, verbose=verbose)
+        _worker(task, **worker_kwargs)
     except Exception as e:
         with open("error_list.txt", "a+") as f:
             f.write(f"{split}/{scene_name} scene analysis failed {e}\n")
 
-def run_parallel(tasks, root_dir, temp_dir, task_type, model_handler=None, num_workers=2):
+def run_parallel(tasks, num_workers=2, **worker_kwargs):
     print("Registered Tasks :", len(tasks))
 
     with ProcessPoolExecutor(max_workers=num_workers) as ex:
-        futures = {ex.submit(ensure_worker, task, root_dir, temp_dir, task_type, model_handler): task for task in tasks}
+        futures = {ex.submit(ensure_worker, task, **worker_kwargs): task for task in tasks}
 
         pbar = tqdm(total=len(futures))
         try:
@@ -1004,6 +1013,14 @@ def main():
     parser = argparse.ArgumentParser(description="Call QVQ-max API using keyframes for dynamic object analysis")
     parser.add_argument("--root_dir", required=True, 
                         help="Scene directory path")
+    parser.add_argument("--export_dir", default=None, 
+                        help="Export directory")
+    parser.add_argument("--camera_prompt_root_dir", default=None, 
+                        help="Export directory")
+    parser.add_argument("--seg_len", type=int, default=49,
+                        help="Segment length (default: 49)")
+    parser.add_argument("--frame_interval", type=int, default=1,
+                        help="Input frame interval (default: 1)")
     parser.add_argument("--max_frames", type=int, default=49,
                         help="Max frames to use (default: 49)")
     parser.add_argument("--temp_dir", default="temp_qvq",
@@ -1032,12 +1049,17 @@ def main():
     # ROOT_DIR = "/data1/cympyc1785/SceneData/DL3DV/scenes"
     # root_dir = "/data1/cympyc1785/SceneData/DynamicVerse/scenes"
     root_dir = args.root_dir
+    if args.export_dir is None:
+        args.export_dir = root_dir
+    if args.camera_prompt_root_dir is None:
+        args.camera_prompt_root_dir = root_dir
 
     if args.single:
         split = os.path.basename(os.path.dirname(root_dir))
         scene_name = os.path.basename(root_dir)
         analyze_single_scene(
-            scene_name, root_dir, split,
+            (scene_name, root_dir, split, args.export_dir),
+            segment_length=49,
             temp_dir=args.temp_dir,
             inference_type=args.task_type,
             model_handler=None,
@@ -1096,11 +1118,34 @@ def main():
     total_start_time = time.time()
 
     # Run Parallel
-    run_parallel(tasks, root_dir, args.temp_dir, args.task_type, model_handler=model_handler, num_workers=4)
+    run_parallel(
+        tasks,
+        num_workers=4,
+        root_dir=root_dir,
+        export_dir=args.export_dir,
+        camera_prompt_root_dir=args.camera_prompt_root_dir,
+        temp_dir=args.temp_dir,
+        seg_len=args.seg_len,
+        frame_interval=args.frame_interval,
+        task_type=args.task_type,
+        model_handler=model_handler,
+        verbose=False,
+    )
 
     # Run for Test
     # for task in tasks:
-    #     _worker(task, root_dir, args.temp_dir, args.task_type, model_handler=model_handler, verbose=True)
+    #     _worker(
+    #         task,
+    #         root_dir=root_dir,
+    #         export_dir=args.export_dir,
+    #         camera_prompt_root_dir=args.camera_prompt_root_dir,
+    #         temp_dir=args.temp_dir,
+    #         seg_len=args.seg_len,
+    #         frame_interval=args.frame_interval,
+    #         task_type=args.task_type,
+    #         model_handler=model_handler,
+    #         verbose=True,
+    #     )
     
     with open("time.log", "a+") as f:
         f.write(f"{split} {time.time() - total_start_time}\n")

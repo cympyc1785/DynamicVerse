@@ -1,7 +1,7 @@
 export VLLM_USE_V1=0
 
 python -m vllm.entrypoints.openai.api_server \
-  --model /data1/cympyc1785/data/motion_dataset/DynamicVerse/preprocess/pretrained/Qwen3-VL-30B-A3B-Instruct \
+  --model ../preprocess/pretrained/Qwen3-VL-30B-A3B-Instruct \
   --served-model-name Qwen/Qwen3-VL-30B-A3B-Instruct \
   --tensor-parallel-size 1 \
   --mm-encoder-tp-mode data \
@@ -11,7 +11,7 @@ python -m vllm.entrypoints.openai.api_server \
   --gpu-memory-utilization 0.70 \
   --quantization fp8 \
   --distributed-executor-backend mp \
-  --allowed-local-media-path /data1/cympyc1785/data/motion_dataset/DynamicVerse/temp_qvq \
+  --allowed-local-media-path ../temp_qvq \
   # --allowed-local-media-path /data1/cympyc1785/SceneData/DL3DV/scenes
   
 #   --enable-expert-parallel 
