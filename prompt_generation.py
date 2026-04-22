@@ -688,10 +688,9 @@ def analyze_single_scene(job, segment_length=49, frame_interval=1, temp_dir="tem
     inference_type : "camera", "scene", "dynamic"
     skip_exist : skip if result exist
     """
-    scene_name, scene_dir, split, export_dir, camera_prompt_dir = job
+    scene_name, scene_dir, split, export_dir, camera_prompt_path = job
     ERR_LIST_PATH = os.path.join(export_dir, "logs", "error_list.txt")
     result_path = os.path.join(export_dir, split, scene_name, "prompts.json")
-    camera_prompt_path = os.path.join(camera_prompt_dir, "prompts.json")
     os.makedirs(os.path.dirname(ERR_LIST_PATH), exist_ok=True)
     os.makedirs(os.path.dirname(result_path), exist_ok=True)
     # if inference_type == "camera_with_scene_video_inpainted":
@@ -718,27 +717,38 @@ def analyze_single_scene(job, segment_length=49, frame_interval=1, temp_dir="tem
         print("[Scene Analysis] Processing", split, scene_name)
     
     image_paths = load_keyframe_paths(images_dir)
+    
 
-    all_captions = None
-    if os.path.exists(camera_prompt_path):
-        with open(camera_prompt_path) as f:
-            all_captions = json.load(f)
-
-    # Find continuous image sequence and Add task (이미지 기준 연속된 sequence 찾아서 task 추가)
-    image_filenames = sorted(os.listdir(images_dir))
-    if image_filenames[0].startswith("frame"):
-        img_num_list = [int(img_filename.split('_')[1].split('.')[0]) for img_filename in image_filenames]
-    else:
-        img_num_list = [int(img_filename.split('.')[0]) for img_filename in image_filenames]
-    _, segments_idx = find_continuous_segments(img_num_list, segment_len=segment_length, use_remaining_frames=True)
-
-    # Add subtasks
     tasks = []
-    for seg_idx, (seg_start_idx, seg_end_idx) in enumerate(segments_idx):
-        # Skip first frame
-        # if seg_idx == 0 and seg_start_idx == 0:
-        #     continue
-        tasks.append((split, scene_name, seg_idx, seg_start_idx, seg_end_idx))
+    if inference_type in ["camera_with_scene_video", "camera_with_scene_video_inpainted"]:
+        # Use existing indices
+        all_captions = None
+        if os.path.exists(camera_prompt_path):
+            with open(camera_prompt_path) as f:
+                all_captions = json.load(f)
+            if len(all_captions.keys()) == 0:
+                raise RuntimeError("No camera caption found at", camera_prompt_path)
+            for seg_idx_str in all_captions.keys():
+                seg_idx = int(seg_idx_str)
+                seg_start_idx, seg_end_idx = all_captions[seg_idx_str]["frame_idx"]
+                tasks.append((split, scene_name, seg_idx, seg_start_idx, seg_end_idx))
+        else:
+            raise RuntimeError("No camera caption file found at", camera_prompt_path)
+    else:
+        # Find continuous image sequence and Add task (이미지 기준 연속된 sequence 찾아서 task 추가)
+        image_filenames = sorted(os.listdir(images_dir))
+        if image_filenames[0].startswith("frame"):
+            img_num_list = [int(img_filename.split('_')[1].split('.')[0]) for img_filename in image_filenames]
+        else:
+            img_num_list = [int(img_filename.split('.')[0]) for img_filename in image_filenames]
+        _, segments_idx = find_continuous_segments(img_num_list, segment_len=segment_length, use_remaining_frames=True)
+
+        # Add subtasks
+        for seg_idx, (seg_start_idx, seg_end_idx) in enumerate(segments_idx):
+            # Skip first frame
+            # if seg_idx == 0 and seg_start_idx == 0:
+            #     continue
+            tasks.append((split, scene_name, seg_idx, seg_start_idx, seg_end_idx))
 
 
     # Execute
@@ -769,15 +779,6 @@ def analyze_single_scene(job, segment_length=49, frame_interval=1, temp_dir="tem
             
             # Prompt
             if inference_type in ["camera_with_scene_video", "camera_with_scene_video_inpainted"]:
-                if all_captions is None:
-                    raise RuntimeError("No camera caption found", camera_prompt_path)
-                if seg_idx_str in all_captions.keys():
-                    cap_start_idx, cap_end_idx = all_captions[seg_idx_str]["frame_idx"]
-                    if cap_start_idx != seg_start_idx or cap_end_idx != seg_end_idx:
-                        print("segment index error. skipping segment.")
-                        with open(ERR_LIST_PATH, "a+") as f:
-                            f.write(f"{split}/{scene_name}/{seg_idx_str} index mismatch seg:{seg_start_idx}:{seg_end_idx} cap:{cap_start_idx}:{cap_end_idx}\n")
-                        continue
                 with open("prompts/relationship+video.json", "r") as f:
                     prompt_dict = json.load(f)
                 camera_caption = all_captions[seg_idx_str]["prompt_camera"]
@@ -819,6 +820,9 @@ def analyze_single_scene(job, segment_length=49, frame_interval=1, temp_dir="tem
                 data[seg_idx_str].update(result)
             else:
                 data[seg_idx_str] = result
+            
+            if "frame_idx" not in data[seg_idx_str].keys():
+                data[seg_idx_str]["frame_idx"] = [seg_start_idx, seg_end_idx]
             
             with open(result_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=4)
@@ -951,11 +955,12 @@ def _worker(task, **worker_kwargs):
     task_type = worker_kwargs["task_type"]
     camera_prompt_root_dir = worker_kwargs.get("camera_prompt_root_dir")
     model_handler = worker_kwargs.get("model_handler")
+    camera_prompt_filename = worker_kwargs.get("camera_prompt_filename")
     verbose = worker_kwargs.get("verbose", False)
 
 
     scene_dir = os.path.join(root_dir, split, scene_name)
-    camera_prompt_dir = os.path.join(camera_prompt_root_dir, split, scene_name)
+    camera_prompt_path = os.path.join(camera_prompt_root_dir, split, scene_name, camera_prompt_filename)
 
     if task_type == "title":
         job = (scene_name, scene_dir, split, export_dir)
@@ -968,7 +973,7 @@ def _worker(task, **worker_kwargs):
             job, verbose=verbose
         )
     else:
-        job = (scene_name, scene_dir, split, export_dir, camera_prompt_dir)
+        job = (scene_name, scene_dir, split, export_dir, camera_prompt_path)
         analyze_single_scene(
             job,
             segment_length=seg_len,
@@ -1017,6 +1022,8 @@ def main():
                         help="Export directory")
     parser.add_argument("--camera_prompt_root_dir", default=None, 
                         help="Export directory")
+    parser.add_argument("--camera_prompt_filename", default="prompts.json", 
+                        help="Export directory")
     parser.add_argument("--seg_len", type=int, default=49,
                         help="Segment length (default: 49)")
     parser.add_argument("--frame_interval", type=int, default=1,
@@ -1031,6 +1038,7 @@ def main():
     parser.add_argument("--task_type", type=str, default="")
     parser.add_argument("--ckpt", type=str, default=None)
     parser.add_argument("--single", action="store_true")
+    parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
 
     if not args.task_type in ["camera",
@@ -1082,9 +1090,6 @@ def main():
         splits = args.splits
         
     print("Splits", splits)
-    
-    with open("time.log", "a+") as f:
-        f.write(f"[Processing Time for {args.task_type}]\n")
 
     model_handler = None
     if args.load_model:
@@ -1117,38 +1122,41 @@ def main():
 
     total_start_time = time.time()
 
-    # Run Parallel
-    run_parallel(
-        tasks,
-        num_workers=4,
-        root_dir=root_dir,
-        export_dir=args.export_dir,
-        camera_prompt_root_dir=args.camera_prompt_root_dir,
-        temp_dir=args.temp_dir,
-        seg_len=args.seg_len,
-        frame_interval=args.frame_interval,
-        task_type=args.task_type,
-        model_handler=model_handler,
-        verbose=False,
-    )
-
-    # Run for Test
-    # for task in tasks:
-    #     _worker(
-    #         task,
-    #         root_dir=root_dir,
-    #         export_dir=args.export_dir,
-    #         camera_prompt_root_dir=args.camera_prompt_root_dir,
-    #         temp_dir=args.temp_dir,
-    #         seg_len=args.seg_len,
-    #         frame_interval=args.frame_interval,
-    #         task_type=args.task_type,
-    #         model_handler=model_handler,
-    #         verbose=True,
-    #     )
+    if not args.debug:
+        # Run Parallel
+        run_parallel(
+            tasks,
+            num_workers=4,
+            root_dir=root_dir,
+            export_dir=args.export_dir,
+            camera_prompt_root_dir=args.camera_prompt_root_dir,
+            camera_prompt_filename=args.camera_prompt_filename,
+            temp_dir=args.temp_dir,
+            seg_len=args.seg_len,
+            frame_interval=args.frame_interval,
+            task_type=args.task_type,
+            model_handler=model_handler,
+            verbose=False,
+        )
+    else:
+        # Run for Test
+        for task in tasks[:5]:
+            _worker(
+                task,
+                root_dir=root_dir,
+                export_dir=args.export_dir,
+                camera_prompt_root_dir=args.camera_prompt_root_dir,
+                camera_prompt_filename=args.camera_prompt_filename,
+                temp_dir=args.temp_dir,
+                seg_len=args.seg_len,
+                frame_interval=args.frame_interval,
+                task_type=args.task_type,
+                model_handler=model_handler,
+                verbose=True,
+            )
     
     with open("time.log", "a+") as f:
-        f.write(f"{split} {time.time() - total_start_time}\n")
+        f.write(f"{args.task_type} {time.time() - total_start_time}\n")
 
 if __name__ == "__main__":
     main()

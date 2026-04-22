@@ -1,5 +1,9 @@
 export VLLM_USE_V1=0
 
+export TMPDIR=/NHNHOME/WORKSPACE/0226010013_A/tmp
+export TRITON_CACHE_DIR=/NHNHOME/WORKSPACE/0226010013_A/triton_cache
+export TORCHINDUCTOR_CACHE_DIR=/NHNHOME/WORKSPACE/0226010013_A/torchinductor_cache
+
 python -m vllm.entrypoints.openai.api_server \
   --model ../preprocess/pretrained/Qwen3-VL-30B-A3B-Instruct \
   --served-model-name Qwen/Qwen3-VL-30B-A3B-Instruct \
